@@ -80,4 +80,5 @@ Do this on your Proxmox Host
 ```
 usermod -aG render,video root
 ```
+Huge thanks to @jimsgarage, 
 To be continued
