@@ -1,0 +1,154 @@
+---
+- name: Install Blender and Flamenco in LXC with NVIDIA GPU
+  hosts: all
+  become: yes
+  vars:
+    blender_version: "3.6"  # Change to desired version
+    flamenco_version: "3.2"  # Change to desired version
+    flamenco_manager_port: 8080
+    flamenco_agent_name: "lxc-render-agent"
+    nvidia_cuda_version: "12.1"  # Should match host driver version
+
+  tasks:
+    # Update system packages
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    # Install basic dependencies
+    - name: Install required system packages
+      apt:
+        name:
+          - wget
+          - curl
+          - git
+          - python3-pip
+          - python3-venv
+          - build-essential
+          - libgl1-mesa-glx
+          - libxi6
+          - libxrender1
+          - libxfixes3
+          - libxcursor1
+          - libxinerama1
+          - libfreetype6
+          - libfontconfig1
+          - libssl-dev
+        state: present
+
+    # Install NVIDIA CUDA toolkit (light version)
+    - name: Install NVIDIA CUDA toolkit
+      apt:
+        name:
+          - "cuda-toolkit-{{ nvidia_cuda_version.split('.')[0] }}-{{ nvidia_cuda_version.split('.')[1] }}"
+          - "nvidia-cuda-toolkit"
+        state: present
+
+    # Download and install Blender
+    - name: Download Blender
+      ansible.builtin.get_url:
+        url: "https://download.blender.org/release/Blender{{ blender_version }}/blender-{{ blender_version }}-linux-x64.tar.xz"
+        dest: /tmp/blender.tar.xz
+        mode: '0755'
+
+    - name: Extract Blender
+      unarchive:
+        src: /tmp/blender.tar.xz
+        dest: /opt
+        remote_src: yes
+
+    - name: Create symlink to Blender
+      file:
+        src: "/opt/blender-{{ blender_version }}-linux-x64"
+        dest: /opt/blender
+        state: link
+
+    - name: Add Blender to PATH
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        regexp: '^PATH='
+        line: 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/blender"'
+        state: present
+
+    # Install Flamenco Manager
+    - name: Create Flamenco Manager directory
+      file:
+        path: /opt/flamenco-manager
+        state: directory
+        mode: '0755'
+
+    - name: Download Flamenco Manager
+      ansible.builtin.get_url:
+        url: "https://flamenco.blender.org/downloads/flamenco-{{ flamenco_version }}-linux-amd64.tar.gz"
+        dest: /tmp/flamenco.tar.gz
+        mode: '0755'
+
+    - name: Extract Flamenco Manager
+      unarchive:
+        src: /tmp/flamenco.tar.gz
+        dest: /opt/flamenco-manager
+        remote_src: yes
+        extra_opts: ["--strip-components=1"]
+
+    - name: Create Flamenco Manager service file
+      ansible.builtin.template:
+        src: flamenco-manager.service.j2
+        dest: /etc/systemd/system/flamenco-manager.service
+        mode: '0644'
+
+    - name: Enable and start Flamenco Manager service
+      systemd:
+        name: flamenco-manager
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    # Install Flamenco Agent
+    - name: Create Flamenco Agent directory
+      file:
+        path: /opt/flamenco-agent
+        state: directory
+        mode: '0755'
+
+    - name: Download Flamenco Agent
+      ansible.builtin.get_url:
+        url: "https://flamenco.blender.org/downloads/flamenco-{{ flamenco_version }}-linux-amd64.tar.gz"
+        dest: /tmp/flamenco-agent.tar.gz
+        mode: '0755'
+
+    - name: Extract Flamenco Agent
+      unarchive:
+        src: /tmp/flamenco-agent.tar.gz
+        dest: /opt/flamenco-agent
+        remote_src: yes
+        extra_opts: ["--strip-components=1"]
+
+    - name: Create Flamenco Agent configuration
+      ansible.builtin.template:
+        src: flamenco-agent.yaml.j2
+        dest: /opt/flamenco-agent/flamenco-agent.yaml
+        mode: '0644'
+
+    - name: Create Flamenco Agent service file
+      ansible.builtin.template:
+        src: flamenco-agent.service.j2
+        dest: /etc/systemd/system/flamenco-agent.service
+        mode: '0644'
+
+    - name: Enable and start Flamenco Agent service
+      systemd:
+        name: flamenco-agent
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    # Verify NVIDIA GPU is accessible
+    - name: Check NVIDIA GPU detection
+      command: nvidia-smi
+      register: nvidia_smi
+      changed_when: false
+
+    - name: Display NVIDIA GPU info
+      debug:
+        var: nvidia_smi.stdout_lines
