@@ -1,0 +1,102 @@
+---
+- name: Install and configure Semaphore
+  hosts: all
+  become: yes
+  vars:
+    semaphore_version: "2.8.91"  # Update to the latest version from GitHub releases
+    semaphore_port: 3000
+    semaphore_db_path: "/opt/semaphore/semaphore.db"
+    semaphore_config_path: "/opt/semaphore/config.json"
+    semaphore_install_dir: "/opt/semaphore"
+    semaphore_user: "semaphore"
+    semaphore_group: "semaphore"
+
+  tasks:
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+
+    - name: Install required system packages
+      apt:
+        name:
+          - curl
+          - sqlite3
+          - git
+        state: present
+
+    - name: Create semaphore user and group
+      user:
+        name: "{{ semaphore_user }}"
+        group: "{{ semaphore_group }}"
+        system: yes
+        shell: /usr/sbin/nologin
+        home: "{{ semaphore_install_dir }}"
+        create_home: yes
+
+    - name: Create installation directory
+      file:
+        path: "{{ semaphore_install_dir }}"
+        state: directory
+        owner: "{{ semaphore_user }}"
+        group: "{{ semaphore_group }}"
+        mode: '0755'
+
+    - name: Download Semaphore binary
+      get_url:
+        url: "https://github.com/ansible-semaphore/semaphore/releases/download/v{{ semaphore_version }}/semaphore_{{ semaphore_version }}_linux_amd64.tar.gz"
+        dest: "/tmp/semaphore.tar.gz"
+        checksum: "sha256:https://github.com/ansible-semaphore/semaphore/releases/download/v{{ semaphore_version }}/checksums.txt"
+        timeout: 30
+
+    - name: Extract Semaphore binary
+      unarchive:
+        src: "/tmp/semaphore.tar.gz"
+        dest: "{{ semaphore_install_dir }}"
+        remote_src: yes
+        owner: "{{ semaphore_user }}"
+        group: "{{ semaphore_group }}"
+        extra_opts: ["--strip-components=1"]
+
+    - name: Create configuration file
+      template:
+        src: semaphore_config.json.j2
+        dest: "{{ semaphore_config_path }}"
+        owner: "{{ semaphore_user }}"
+        group: "{{ semaphore_group }}"
+        mode: '0640'
+
+    - name: Create systemd service file
+      template:
+        src: semaphore.service.j2
+        dest: /etc/systemd/system/semaphore.service
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start Semaphore service
+      systemd:
+        name: semaphore
+        state: started
+        enabled: yes
+
+    - name: Wait for Semaphore to be available
+      uri:
+        url: "http://localhost:{{ semaphore_port }}/api/auth/login"
+        method: GET
+        status_code: 200
+        timeout: 30
+      register: result
+      until: result.status == 200
+      retries: 10
+      delay: 5
+
+    - name: Display initial admin credentials
+      debug:
+        msg: |
+          Semaphore has been successfully installed!
+          Access it at http://your_server_ip:{{ semaphore_port }}
+          Initial admin credentials:
+          Username: admin
+          Password: Check the Semaphore logs with 'journalctl -u semaphore -n 50' to find the initial password
