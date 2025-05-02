@@ -1,0 +1,15 @@
+[Unit]
+Description=Semaphore Ansible UI
+After=network.target
+
+[Service]
+Type=simple
+User={{ semaphore_user }}
+Group={{ semaphore_group }}
+WorkingDirectory={{ semaphore_install_dir }}
+ExecStart={{ semaphore_install_dir }}/semaphore server --config {{ semaphore_config_path }}
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
