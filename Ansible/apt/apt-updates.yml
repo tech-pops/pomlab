@@ -1,39 +1,118 @@
 ---
-- name: Update and upgrade Debian systems
+- name: Comprehensive Debian Update Management with Discord Notifications
   hosts: all
   become: yes
   vars:
     discord_webhook: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
-    discord_message: "Server {{ inventory_hostname }} requires reboot after updates"
+    discord_username: "Ansible Update Bot"
+    discord_avatar_url: "https://www.ansible.com/hubfs/2016_Images/Assets/Ansible-Mark-Large-RGB-Pool.png"
+    update_timeout: 1800  # 30 minutes for entire update process
+    webhook_timeout: 10   # seconds for Discord webhook call
 
   tasks:
+    - name: Gather package facts
+      package_facts:
+        manager: auto
+
     - name: Update apt package index
       apt:
         update_cache: yes
+      register: apt_update
+      until: apt_update is succeeded
+      retries: 3
+      delay: 10
+      changed_when: false
+      tags: update
 
-    - name: Check if upgrades are available
+    - name: Check for available upgrades (security only)
       apt:
-        upgrade: safe
-        autoremove: yes
+        upgrade: dist
         check_mode: yes
       register: apt_upgrade
+      tags: check
+
+    - name: Display available upgrades count
+      debug:
+        msg: "{{ apt_upgrade.stdout_lines | select('match', '^\\S+') | list | count }} packages available for upgrade"
+      when: apt_upgrade.stdout != ""
 
     - name: Apply security upgrades if available
-      apt:
-        upgrade: safe
-        autoremove: yes
+      block:
+        - name: Perform the upgrade
+          apt:
+            upgrade: dist
+            autoremove: yes
+          register: upgrade_results
+          timeout: "{{ update_timeout }}"
+
+        - name: Capture upgraded packages
+          set_fact:
+            upgraded_packages: |
+              {% if upgrade_results.stdout != "" %}
+              {{ upgrade_results.stdout_lines | select('match', '^\\S+') | list | join('\n') }}
+              {% else %}
+              No package names captured in output
+              {% endif %}
+
+        - name: Create upgrade summary
+          set_fact:
+            upgrade_summary: |
+              {{ upgraded_packages.split('\n') | length }} packages upgraded on {{ inventory_hostname }}:
+              ```
+              {{ upgraded_packages }}
+              ```
+
       when: apt_upgrade.changed
+      tags: upgrade
 
     - name: Check if reboot is required
       stat:
         path: /var/run/reboot-required
       register: reboot_required
 
+    - name: Check reboot reason if needed
+      command: cat /var/run/reboot-required.pkgs
+      register: reboot_reason
+      when: reboot_required.stat.exists
+
+    - name: Compose Discord message
+      set_fact:
+        discord_message: |
+          {
+            "username": "{{ discord_username }}",
+            "avatar_url": "{{ discord_avatar_url }}",
+            "content": "Server `{{ inventory_hostname }}` requires reboot!",
+            "embeds": [
+              {
+                "title": "Update Summary",
+                "description": "{{ upgrade_summary | default('No packages upgraded') }}",
+                "color": 16711680,
+                "fields": [
+                  {
+                    "name": "Reboot Reason",
+                    "value": "```{{ reboot_reason.stdout | default('Unknown') }}```"
+                  }
+                ]
+              }
+            ]
+          }
+      when: reboot_required.stat.exists
+
     - name: Post to Discord if reboot is needed
       uri:
         url: "{{ discord_webhook }}"
         method: POST
+        headers:
+          Content-Type: "application/json"
+        body: "{{ discord_message }}"
         body_format: json
-        body:
-          content: "{{ discord_message }}"
+        timeout: "{{ webhook_timeout }}"
+        status_code: 200, 204
+      register: webhook_result
+      ignore_errors: yes
       when: reboot_required.stat.exists
+
+    - name: Debug webhook result if failed
+      debug:
+        msg: "Failed to send Discord notification: {{ webhook_result.msg }}"
+      when: webhook_result is failed
