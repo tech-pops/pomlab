@@ -10,7 +10,7 @@ Usage Instructions
 
 - Run the playbook with:
     
-        ansible-playbook -i your_inventory_file install_semaphore.yml
+    ansible-playbook -i your_inventory_file install_semaphore.yml
 
 Post-Installation Steps
 
@@ -20,7 +20,7 @@ Post-Installation Steps
 
 - To get the initial password, check the logs:
     
-        journalctl -u semaphore -n 50
+  journalctl -u semaphore -n 50
 
 Notes
     This playbook installs Semaphore with SQLite backend by default
