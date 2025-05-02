@@ -1,0 +1,56 @@
+{
+  "mysql": {
+    "host": "",
+    "user": "",
+    "pass": "",
+    "name": ""
+  },
+  "postgres": {
+    "host": "",
+    "user": "",
+    "pass": "",
+    "name": "",
+    "ssl_mode": "disable"
+  },
+  "bolt": {
+    "host": "",
+    "user": "",
+    "pass": "",
+    "name": ""
+  },
+  "ldap": {
+    "enable": false,
+    "needtls": true,
+    "dn": "",
+    "host": "",
+    "port": 389,
+    "basedn": "",
+    "userfilter": "",
+    "groupfilter": "",
+    "binddn": "",
+    "bindpassword": "",
+    "roleattribute": "",
+    "searchfilter": ""
+  },
+  "port": "{{ semaphore_port }}",
+  "interface": "",
+  "tmp_path": "{{ semaphore_install_dir }}/tmp",
+  "cookie_hash": "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}",
+  "cookie_encryption": "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}",
+  "access_key_encryption": "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}",
+  "email_sender": "",
+  "email_host": "",
+  "email_port": "",
+  "web_host": "http://localhost:{{ semaphore_port }}",
+  "telegram_chat": "",
+  "telegram_token": "",
+  "concurrency_mode": "",
+  "max_parallel_tasks": 0,
+  "email_secure": false,
+  "email_alert": false,
+  "telegram_alert": false,
+  "ldap_needtls": false,
+  "ssh_config_path": "",
+  "demo_mode": false,
+  "config_db": "{{ semaphore_db_path }}"
+}
