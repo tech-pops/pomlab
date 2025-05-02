@@ -1,0 +1,45 @@
+---
+- name: Configure APT proxy settings if not set
+  hosts: all
+  become: yes
+  vars:
+    http_proxy: "http://192.168.10.25:3142"
+    https_proxy: "DIRECT"
+
+  tasks:
+    - name: Check if APT proxy configuration exists
+      stat:
+        path: /etc/apt/apt.conf.d/02proxy
+      register: apt_proxy_conf
+
+    - name: Read current APT configuration (if exists)
+      command: cat /etc/apt/apt.conf.d/02proxy
+      register: current_apt_conf
+      when: apt_proxy_conf.stat.exists
+
+    - name: Configure APT proxy if not set
+      block:
+        - name: Create APT proxy configuration
+          copy:
+            dest: /etc/apt/apt.conf.d/02proxy
+            content: |
+              Acquire::http::Proxy "{{ http_proxy }}";
+              Acquire::https::Proxy "{{ https_proxy }}";
+            owner: root
+            group: root
+            mode: '0644'
+          when: >
+            not apt_proxy_conf.stat.exists or
+            (current_apt_conf.stdout is defined and
+             (http_proxy not in current_apt_conf.stdout or
+              https_proxy not in current_apt_conf.stdout))
+
+        - name: Show configuration change message
+          debug:
+            msg: "APT proxy configured - HTTP: {{ http_proxy }}, HTTPS: {{ https_proxy }}"
+          when: >
+            not apt_proxy_conf.stat.exists or
+            (current_apt_conf.stdout is defined and
+             (http_proxy not in current_apt_conf.stdout or
+              https_proxy not in current_apt_conf.stdout))
+      when: inventory_hostname in groups['all']
